@@ -1,0 +1,40 @@
+{
+  "name": "ai-usage-monitors",
+  "version": "1.0.0",
+  "description": "Live subscription usage monitors for Claude Code (cu) and Codex CLI (cou) - colored terminal bars + reset timers",
+  "bin": {
+    "cu": "./bin/cu",
+    "cou": "./bin/cou"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "codex",
+    "openai",
+    "anthropic",
+    "usage",
+    "monitor",
+    "subscription",
+    "rate-limit",
+    "cli"
+  ],
+  "author": "minhvoio",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/minhvoio/ai-usage-monitors.git"
+  },
+  "bugs": {
+    "url": "https://github.com/minhvoio/ai-usage-monitors/issues"
+  },
+  "homepage": "https://github.com/minhvoio/ai-usage-monitors#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
