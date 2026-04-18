@@ -49,6 +49,23 @@ irm https://raw.githubusercontent.com/minhvoio/ai-usage-monitors/main/install.ps
 npm install -g github:minhvoio/ai-usage-monitors
 ```
 
+The installer will ask if you also want the companion tool [**macu**](https://github.com/minhvoio/macu_minimize-ai-credit-usage) (historical tool-usage analysis + MCP optimization). Skip the prompt:
+
+```bash
+# Monitors only (no prompt)
+curl -fsSL https://raw.githubusercontent.com/minhvoio/ai-usage-monitors/main/install.sh | bash -s -- --no-companion
+
+# Install both at once (no prompt)
+curl -fsSL https://raw.githubusercontent.com/minhvoio/ai-usage-monitors/main/install.sh | bash -s -- --yes
+```
+
+Windows equivalent (PowerShell):
+
+```powershell
+$env:INSTALL_COMPANION = "yes"   # or "no"
+irm https://raw.githubusercontent.com/minhvoio/ai-usage-monitors/main/install.ps1 | iex
+```
+
 ## Platform support
 
 | Command | macOS | Linux | Windows |
@@ -134,9 +151,34 @@ Codex has **no dedicated usage endpoint**. The only way to read rate-limit state
 
 `cou` needs to make a real inference call because that's the only place the headers exist. The request is as small as possible: 2 tokens of input, `store=false`, no `max_output_tokens`.
 
-## Companion repo
+## Companion: macu
 
-This repo is split out from [**macu**](https://github.com/minhvoio/macu_minimize-ai-credit-usage) - a tool that analyzes your tool-call history to find wasted tokens from unused MCP servers. `macu` is about historical analysis; `ai-usage-monitors` is about live state. Use both if you pay for AI coding subscriptions.
+`cu` / `cou` show **live usage** - how much of your window you've burned through right now. The companion [**macu**](https://github.com/minhvoio/macu_minimize-ai-credit-usage) finds **historical waste** - unused MCP tools that bloat every request by ~9,000 tokens (32% of input budget on a real audit).
+
+```
+  $ macu
+  Tool Frequency (last 180 days, 32,848 calls)
+  Read         ████████████████████  8,421 (26%)
+  Edit         ███████████████       6,102 (19%)
+  Grep         ████████████          4,890 (15%)
+
+  Unused Tools (0 calls - pure overhead)
+  ✗ mcp__linear-*          (8 tools, ~2,400 tok/request)
+  ✗ mcp__slack-*           (12 tools, ~3,600 tok/request)
+
+  Before vs After
+  Before  ████████████████████████████████████████  28,500 tok
+  After   ██████████████████████████                19,500 tok
+  Savings ██████████████                             9,000 tok (32%)
+```
+
+Install it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/minhvoio/macu_minimize-ai-credit-usage/main/install.sh | bash
+```
+
+Or let this installer offer it at the end - it prompts `Install macu too? [Y/n]` by default.
 
 ## License
 
