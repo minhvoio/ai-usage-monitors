@@ -31,21 +31,42 @@ Both cache responses for 90 seconds so repeated calls don't spam the APIs.
 
 ## Install
 
+### macOS / Linux
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/minhvoio/ai-usage-monitors/main/install.sh | bash
 ```
 
-Or:
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/minhvoio/ai-usage-monitors/main/install.ps1 | iex
+```
+
+### Any platform (direct)
 
 ```bash
 npm install -g github:minhvoio/ai-usage-monitors
 ```
 
+## Platform support
+
+| Command | macOS | Linux | Windows |
+|---------|-------|-------|---------|
+| `cu`    | yes   | no    | no      |
+| `cou`   | yes   | yes   | yes     |
+
+`cu` is macOS-only because it reads Claude Code credentials from the macOS Keychain. If you need `cu` on Windows or Linux, please [open an issue](https://github.com/minhvoio/ai-usage-monitors/issues) - I haven't mapped where Claude Code stores credentials on those platforms yet.
+
+`cou` works everywhere because it reads credentials from a plain file (`~/.codex/auth.json` on macOS/Linux, `%USERPROFILE%\.codex\auth.json` on Windows).
+
 ## Requirements
 
-- **`cu`**: macOS + Claude Code logged in (`claude` CLI) + Python 3 + curl
-- **`cou`**: macOS or Linux + Codex CLI logged in (`~/.codex/auth.json` exists) + Python 3 + curl
-- Node.js ≥ 18 (only for `npm install -g` - no runtime Node dependency)
+- **Node.js ≥ 18** - for `npm install -g` and the cross-platform command wrappers
+- **Python 3** - does the actual work. `python3` on macOS/Linux, `python` on Windows
+- **curl** - ships with macOS, most Linux distros, and Windows 10+
+- **`cu` only**: macOS + Claude Code logged in (`claude` CLI)
+- **`cou` only**: Codex CLI logged in (`~/.codex/auth.json` exists)
 
 ## Usage
 

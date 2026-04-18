@@ -9,6 +9,7 @@ Requires: macOS, Python 3, curl, Claude Code logged in.
 
 import json
 import os
+import platform
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -27,6 +28,16 @@ from shared import (
     pct_color,
     clamp_pct,
 )
+
+if platform.system() != "Darwin":
+    sys.stderr.write(
+        "cu currently only supports macOS (reads Claude Code credentials from Keychain).\n"
+        f"Detected platform: {platform.system()}.\n\n"
+        "Windows / Linux support: please open an issue\n"
+        "  https://github.com/minhvoio/ai-usage-monitors/issues\n\n"
+        "If you use Codex CLI, try `cou` instead (works on macOS and Linux).\n"
+    )
+    sys.exit(2)
 
 HOME = Path.home()
 

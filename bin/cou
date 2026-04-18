@@ -1,9 +1,0 @@
-#!/bin/bash
-# cou - Show Codex CLI subscription usage (colored bars + reset timers)
-# Wrapper around src/codex_usage.py
-# Requires: Python 3, curl, Codex CLI logged in (~/.codex/auth.json)
-
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
-REPO_DIR="$(dirname "$SCRIPT_DIR")"
-
-exec python3 "$REPO_DIR/src/codex_usage.py" "$@"

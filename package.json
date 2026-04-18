@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "description": "Live subscription usage monitors for Claude Code (cu) and Codex CLI (cou) - colored terminal bars + reset timers",
   "bin": {
-    "cu": "./bin/cu",
-    "cou": "./bin/cou"
+    "cu": "./bin/cu.mjs",
+    "cou": "./bin/cou.mjs"
   },
+  "type": "module",
   "files": [
     "bin/",
     "src/",
