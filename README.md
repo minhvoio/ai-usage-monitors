@@ -2,6 +2,17 @@
 
 Live subscription usage monitors for **Claude Code** and **Codex CLI**. Two commands, colored bars, reset timers, zero configuration.
 
+## Why
+
+If you're on a paid Claude Code or Codex CLI plan, you want to know how much of your window you've already burned through without opening a browser or checking a dashboard. These two commands print it in your terminal in under a second.
+
+- **`cu`** reads Claude Code credentials from macOS Keychain, calls the Anthropic OAuth usage endpoint, prints 5h / weekly / Sonnet / Opus utilization.
+- **`cou`** reads Codex CLI credentials from `~/.codex/auth.json`, fires a minimal inference request (the cheapest possible: `model="gpt-5.2", instructions="ok", store=false`), parses the `x-codex-*` rate-limit headers, prints primary / secondary window utilization.
+
+Both cache responses for 90 seconds so repeated calls don't spam the APIs.
+
+## What you'll see
+
 ```
   Claude Code Usage  -  2026-04-18 12:13
   ───────────────────────────────────────────────────────
@@ -20,14 +31,7 @@ Live subscription usage monitors for **Claude Code** and **Codex CLI**. Two comm
 
 Bars are green when there's headroom, yellow at 70%+, red at 90%+.
 
-## Why
-
-If you're on a paid Claude Code or Codex CLI plan, you want to know how much of your window you've already burned through - without opening a browser, without checking a dashboard. These two commands print it in your terminal in under a second.
-
-- **`cu`** - Reads Claude Code credentials from macOS Keychain, calls the Anthropic OAuth usage endpoint, prints 5h / weekly / Sonnet / Opus utilization.
-- **`cou`** - Reads Codex CLI credentials from `~/.codex/auth.json`, fires a minimal inference request (the cheapest possible - `model="gpt-5.2", instructions="ok", store=false`), parses the `x-codex-*` rate-limit headers from the response, prints primary / secondary window utilization.
-
-Both cache responses for 90 seconds so repeated calls don't spam the APIs.
+---
 
 ## Install
 
@@ -66,24 +70,7 @@ $env:INSTALL_COMPANION = "yes"   # or "no"
 irm https://raw.githubusercontent.com/minhvoio/ai-usage-monitors/main/install.ps1 | iex
 ```
 
-## Platform support
-
-| Command | macOS | Linux | Windows |
-|---------|-------|-------|---------|
-| `cu`    | yes   | no    | no      |
-| `cou`   | yes   | yes   | yes     |
-
-`cu` is macOS-only because it reads Claude Code credentials from the macOS Keychain. If you need `cu` on Windows or Linux, please [open an issue](https://github.com/minhvoio/ai-usage-monitors/issues) - I haven't mapped where Claude Code stores credentials on those platforms yet.
-
-`cou` works everywhere because it reads credentials from a plain file (`~/.codex/auth.json` on macOS/Linux, `%USERPROFILE%\.codex\auth.json` on Windows).
-
-## Requirements
-
-- **Node.js ≥ 18** - for `npm install -g` and the cross-platform command wrappers
-- **Python 3** - does the actual work. `python3` on macOS/Linux, `python` on Windows
-- **curl** - ships with macOS, most Linux distros, and Windows 10+
-- **`cu` only**: macOS + Claude Code logged in (`claude` CLI)
-- **`cou` only**: Codex CLI logged in (`~/.codex/auth.json` exists)
+---
 
 ## Usage
 
@@ -128,6 +115,21 @@ cou --no-cache     # Skip the 90s cache, fetch fresh
 }
 ```
 
+---
+
+## Platform support
+
+| Command | macOS | Linux | Windows |
+|---------|-------|-------|---------|
+| `cu`    | yes   | no    | no      |
+| `cou`   | yes   | yes   | yes     |
+
+`cu` is macOS-only because it reads Claude Code credentials from the macOS Keychain. If you need `cu` on Windows or Linux, please [open an issue](https://github.com/minhvoio/ai-usage-monitors/issues). I haven't mapped where Claude Code stores credentials on those platforms yet.
+
+`cou` works everywhere because it reads credentials from a plain file (`~/.codex/auth.json` on macOS/Linux, `%USERPROFILE%\.codex\auth.json` on Windows).
+
+---
+
 ## How it works
 
 ### `cu` - Claude Code
@@ -144,33 +146,20 @@ Codex has **no dedicated usage endpoint**. The only way to read rate-limit state
 
 1. Reads access token + refresh token from `~/.codex/auth.json`.
 2. If expired, refreshes via `POST https://auth.openai.com/oauth/token`.
-3. Determines the base URL from `auth_mode`: `chatgpt` → `https://chatgpt.com/backend-api/codex`, otherwise `https://api.openai.com/v1`.
+3. Determines the base URL from `auth_mode`: `chatgpt` -> `https://chatgpt.com/backend-api/codex`, otherwise `https://api.openai.com/v1`.
 4. Fires `POST /responses` with the minimum possible body: `{"model": "gpt-5.2", "instructions": "ok", "input": [...], "stream": true, "store": false}`. If `~/.codex/config.toml` sets a different model, tries that first, falls back to `gpt-5.2` then `gpt-5.4`.
 5. Parses `x-codex-*` headers: `x-codex-primary-used-percent`, `x-codex-primary-window-minutes`, `x-codex-primary-reset-at`, plus secondary equivalents, plan type, active limit, credits balance.
 6. Renders utilization bars. Caches at `~/.codex/.macu-cache/usage.json` for 90s.
 
 `cou` needs to make a real inference call because that's the only place the headers exist. The request is as small as possible: 2 tokens of input, `store=false`, no `max_output_tokens`.
 
+---
+
 ## Companion: macu
 
-`cu` / `cou` show **live usage** - how much of your window you've burned through right now. The companion [**macu**](https://github.com/minhvoio/macu_minimize-ai-credit-usage) finds **historical waste** - unused MCP tools that bloat every request by ~9,000 tokens (32% of input budget on a real audit).
+`cu` / `cou` show **live usage**: how much of your window you've burned through right now. The companion [**macu**](https://github.com/minhvoio/macu_minimize-ai-credit-usage) finds **historical waste**: unused MCP tools that bloat every request with thousands of tokens you never use.
 
-```
-  $ macu
-  Tool Frequency (last 180 days, 32,848 calls)
-  Read         ████████████████████  8,421 (26%)
-  Edit         ███████████████       6,102 (19%)
-  Grep         ████████████          4,890 (15%)
-
-  Unused Tools (0 calls - pure overhead)
-  ✗ mcp__linear-*          (8 tools, ~2,400 tok/request)
-  ✗ mcp__slack-*           (12 tools, ~3,600 tok/request)
-
-  Before vs After
-  Before  ████████████████████████████████████████  28,500 tok
-  After   ██████████████████████████                19,500 tok
-  Savings ██████████████                             9,000 tok (32%)
-```
+Run `macu` to see which tools earn their keep and which are dead weight, then follow its action plan to clean up. On a real setup it found 54 removable tools and a 45% token reduction per message.
 
 Install it:
 
@@ -178,7 +167,17 @@ Install it:
 curl -fsSL https://raw.githubusercontent.com/minhvoio/macu_minimize-ai-credit-usage/main/install.sh | bash
 ```
 
-Or let this installer offer it at the end - it prompts `Install macu too? [Y/n]` by default.
+Or let this installer offer it at the end. It prompts `Install macu too? [Y/n]` by default.
+
+---
+
+## Requirements
+
+- **Node.js >= 18** for `npm install -g` and the cross-platform command wrappers
+- **Python 3** does the actual work. `python3` on macOS/Linux, `python` on Windows
+- **curl** ships with macOS, most Linux distros, and Windows 10+
+- **`cu` only**: macOS + Claude Code logged in (`claude` CLI)
+- **`cou` only**: Codex CLI logged in (`~/.codex/auth.json` exists)
 
 ## License
 
