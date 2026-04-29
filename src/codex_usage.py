@@ -439,6 +439,61 @@ def cmd_list():
         print(f"  {p}")
 
 
+def cmd_all(as_json):
+    profiles = list_profiles("codex")
+    if not profiles:
+        print("No saved Codex profiles.")
+        print("Save one: log into an account and run `cou save <name>`")
+        return
+
+    results = {}
+    for name in profiles:
+        auth = load_profile(name, "codex")
+        if not auth or not (auth.get("tokens") or {}).get("access_token"):
+            continue
+
+        access_token = auth["tokens"]["access_token"]
+
+        if is_token_expired(access_token):
+            refresh_token = auth["tokens"].get("refresh_token")
+            if refresh_token:
+                refreshed = refresh_tokens(refresh_token)
+                if refreshed:
+                    auth["tokens"].update(refreshed)
+                    save_profile(name, "codex", auth)
+                    access_token = refreshed["access_token"]
+                else:
+                    sys.stderr.write(f"  {DIM}[{name}: refresh failed, skipped]{RESET}\n")
+                    continue
+            else:
+                sys.stderr.write(f"  {DIM}[{name}: expired, skipped]{RESET}\n")
+                continue
+
+        token_prefix = access_token[:16]
+        cf = profile_cache_file(name, "codex")
+
+        cache = read_cache(cf)
+        if cache and is_cache_valid(cache, token_prefix):
+            data = cache["data"]
+        else:
+            headers = fetch_headers(auth)
+            if headers:
+                data = parse_usage(headers, auth)
+                write_cache(data, token_prefix, cf)
+            elif cache and cache.get("data"):
+                data = cache["data"]
+            else:
+                sys.stderr.write(f"  {DIM}[{name}: fetch failed, skipped]{RESET}\n")
+                continue
+
+        results[name] = data
+        if not as_json:
+            format_limits(data, account_label=name)
+
+    if as_json:
+        print(json.dumps(results))
+
+
 # ── Main ──────────────────────────────────────────────────
 
 
@@ -456,6 +511,9 @@ def main():
 
     if positional and positional[0] == "list":
         return cmd_list()
+
+    if positional and positional[0] == "all":
+        return cmd_all(as_json)
 
     profile_name = positional[0] if positional else None
 

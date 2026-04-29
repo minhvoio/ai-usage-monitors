@@ -353,6 +353,57 @@ def cmd_list():
         print(f"  {p}")
 
 
+def cmd_all(as_json):
+    profiles = list_profiles("claude")
+    if not profiles:
+        print("No saved Claude profiles.")
+        print("Save one: log into an account and run `cu save <name>`")
+        return
+
+    results = {}
+    for name in profiles:
+        creds = load_profile(name, "claude")
+        if not creds or not creds.get("accessToken"):
+            continue
+
+        if is_token_expired(creds):
+            if creds.get("refreshToken"):
+                refreshed = refresh_access_token(creds["refreshToken"])
+                if refreshed:
+                    creds.update(refreshed)
+                    save_profile(name, "claude", creds)
+                else:
+                    sys.stderr.write(f"  {DIM}[{name}: refresh failed, skipped]{RESET}\n")
+                    continue
+            else:
+                sys.stderr.write(f"  {DIM}[{name}: expired, skipped]{RESET}\n")
+                continue
+
+        token_prefix = (creds.get("accessToken") or "")[:16]
+        cf = profile_cache_file(name, "claude")
+
+        cache = read_cache(cf)
+        if cache and is_cache_valid(cache, token_prefix) and not cache.get("error") and cache.get("data"):
+            data = cache["data"]
+        else:
+            raw = fetch_usage(creds["accessToken"])
+            if raw:
+                data = parse_usage(raw)
+                write_cache(data, token_prefix, cf)
+            elif cache and cache.get("data"):
+                data = cache["data"]
+            else:
+                sys.stderr.write(f"  {DIM}[{name}: fetch failed, skipped]{RESET}\n")
+                continue
+
+        results[name] = data
+        if not as_json:
+            format_limits(data, account_label=name)
+
+    if as_json:
+        print(json.dumps(results))
+
+
 # ── Main ──────────────────────────────────────────────────
 
 
@@ -369,6 +420,9 @@ def main():
 
     if positional and positional[0] == "list":
         return cmd_list()
+
+    if positional and positional[0] == "all":
+        return cmd_all(as_json)
 
     profile_name = positional[0] if positional else None
 
