@@ -27,6 +27,10 @@ from shared import (
     bar,
     pct_color,
     clamp_pct,
+    save_profile,
+    load_profile,
+    list_profiles,
+    profile_cache_file,
 )
 
 if platform.system() != "Darwin":
@@ -193,10 +197,11 @@ def parse_usage(raw):
 # ── Cache ─────────────────────────────────────────────────
 
 
-def read_cache():
+def read_cache(cache_file=None):
+    cf = cache_file or CACHE_FILE
     try:
-        if CACHE_FILE.exists():
-            return json.loads(CACHE_FILE.read_text())
+        if cf.exists():
+            return json.loads(cf.read_text())
     except Exception:
         pass
     return None
@@ -215,9 +220,10 @@ def is_cache_valid(cache, token_prefix=None):
     return age_ms < CACHE_TTL_MS
 
 
-def write_cache(data, token_prefix=None):
+def write_cache(data, token_prefix=None, cache_file=None):
+    cf = cache_file or CACHE_FILE
     try:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cf.parent.mkdir(parents=True, exist_ok=True)
         entry = {
             "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
             "data": data,
@@ -226,7 +232,7 @@ def write_cache(data, token_prefix=None):
             "tokenPrefix": token_prefix,
             "lastSuccessAt": int(datetime.now(timezone.utc).timestamp() * 1000),
         }
-        with open(CACHE_FILE, "w") as f:
+        with open(cf, "w") as f:
             json.dump(entry, f, indent=2)
     except Exception:
         pass
@@ -314,37 +320,90 @@ def format_limits(data, account_label=None):
     print()
 
 
+# ── Profile commands ───────────────────────────────────────
+
+
+RESERVED_ARGS = {"save", "list", "--json"}
+
+
+def cmd_save(name):
+    creds = read_keychain_credentials()
+    if not creds or not creds.get("accessToken"):
+        print("Error: No Claude Code credentials found in Keychain.", file=sys.stderr)
+        print("Make sure Claude Code is logged in (run: claude)", file=sys.stderr)
+        sys.exit(1)
+
+    save_profile(name, "claude", {
+        "accessToken": creds["accessToken"],
+        "refreshToken": creds.get("refreshToken"),
+        "expiresAt": creds.get("expiresAt"),
+    })
+    print(f"Saved Claude credentials to profile '{name}'.")
+    print(f"Use `cu {name}` to check usage.")
+
+
+def cmd_list():
+    profiles = list_profiles("claude")
+    if not profiles:
+        print("No saved Claude profiles.")
+        print("Save one: log into an account and run `cu save <name>`")
+        return
+    print("Saved Claude profiles:")
+    for p in profiles:
+        print(f"  {p}")
+
+
 # ── Main ──────────────────────────────────────────────────
 
 
 def main():
     args = sys.argv[1:]
     as_json = "--json" in args
+    positional = [a for a in args if not a.startswith("--")]
 
-    # Read credentials from keychain
-    creds = read_keychain_credentials()
-    if not creds or not creds.get("accessToken"):
-        print("Error: No Claude Code credentials found.", file=sys.stderr)
-        print("Make sure Claude Code is logged in (run: claude)", file=sys.stderr)
-        sys.exit(1)
+    if positional and positional[0] == "save":
+        if len(positional) < 2:
+            print("Usage: cu save <profile-name>", file=sys.stderr)
+            sys.exit(1)
+        return cmd_save(positional[1])
 
-    # Check token expiration
+    if positional and positional[0] == "list":
+        return cmd_list()
+
+    profile_name = positional[0] if positional else None
+
+    if profile_name:
+        creds = load_profile(profile_name, "claude")
+        if not creds or not creds.get("accessToken"):
+            print(f"Error: Profile '{profile_name}' not found or has no credentials.", file=sys.stderr)
+            print(f"Save it first: log in and run `cu save {profile_name}`", file=sys.stderr)
+            sys.exit(1)
+    else:
+        creds = read_keychain_credentials()
+        if not creds or not creds.get("accessToken"):
+            print("Error: No Claude Code credentials found.", file=sys.stderr)
+            print("Make sure Claude Code is logged in (run: claude)", file=sys.stderr)
+            sys.exit(1)
+
     if is_token_expired(creds):
         if creds.get("refreshToken"):
             refreshed = refresh_access_token(creds["refreshToken"])
             if refreshed:
                 creds.update(refreshed)
+                if profile_name:
+                    save_profile(profile_name, "claude", creds)
             else:
-                print(
-                    "Error: Token expired and refresh failed. Re-login to Claude Code.",
-                    file=sys.stderr,
-                )
+                if profile_name:
+                    print(f"Error: Profile '{profile_name}' token expired and refresh failed.", file=sys.stderr)
+                    print(f"Re-save: log in and run `cu save {profile_name}`", file=sys.stderr)
+                else:
+                    print("Error: Token expired and refresh failed. Re-login to Claude Code.", file=sys.stderr)
                 sys.exit(1)
 
     token_prefix = (creds.get("accessToken") or "")[:16]
+    cache_path = profile_cache_file(profile_name, "claude") if profile_name else None
 
-    # Try cache first
-    cache = read_cache()
+    cache = read_cache(cache_path)
     if (
         cache
         and is_cache_valid(cache, token_prefix)
@@ -355,10 +414,9 @@ def main():
         if as_json:
             print(json.dumps(data))
         else:
-            format_limits(data)
+            format_limits(data, account_label=profile_name)
         return
 
-    # Fetch fresh
     raw = fetch_usage(creds["accessToken"])
     if not raw:
         if cache and cache.get("data"):
@@ -367,19 +425,19 @@ def main():
             if as_json:
                 print(json.dumps(data))
             else:
-                format_limits(data)
+                format_limits(data, account_label=profile_name)
         else:
             print("Error: Could not reach Anthropic API.", file=sys.stderr)
             sys.exit(1)
         return
 
     data = parse_usage(raw)
-    write_cache(data, token_prefix)
+    write_cache(data, token_prefix, cache_path)
 
     if as_json:
         print(json.dumps(data))
     else:
-        format_limits(data)
+        format_limits(data, account_label=profile_name)
 
 
 if __name__ == "__main__":

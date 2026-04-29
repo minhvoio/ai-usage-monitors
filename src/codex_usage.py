@@ -33,6 +33,10 @@ from shared import (
     pct_color,
     time_until,
     format_window,
+    save_profile,
+    load_profile,
+    list_profiles,
+    profile_cache_file,
 )
 
 HOME = Path.home()
@@ -308,24 +312,26 @@ def parse_usage(headers, auth):
 # ── Cache ─────────────────────────────────────────────────
 
 
-def read_cache():
+def read_cache(cache_file=None):
+    cf = cache_file or CACHE_FILE
     try:
-        if CACHE_FILE.exists():
-            return json.loads(CACHE_FILE.read_text())
+        if cf.exists():
+            return json.loads(cf.read_text())
     except Exception:
         pass
     return None
 
 
-def write_cache(data, token_prefix=None):
+def write_cache(data, token_prefix=None, cache_file=None):
+    cf = cache_file or CACHE_FILE
     try:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cf.parent.mkdir(parents=True, exist_ok=True)
         entry = {
             "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
             "data": data,
             "tokenPrefix": token_prefix,
         }
-        CACHE_FILE.write_text(json.dumps(entry, indent=2))
+        cf.write_text(json.dumps(entry, indent=2))
     except Exception:
         pass
 
@@ -346,9 +352,11 @@ def is_cache_valid(cache, token_prefix=None):
 # ── Rendering ─────────────────────────────────────────────
 
 
-def format_limits(data):
+def format_limits(data, account_label=None):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     parts = []
+    if account_label:
+        parts.append(account_label)
     if data.get("planType"):
         parts.append(data["planType"])
     if data.get("activeLimit"):
@@ -405,6 +413,32 @@ def format_limits(data):
     print()
 
 
+# ── Profile commands ───────────────────────────────────────
+
+
+def cmd_save(name):
+    auth = read_auth()
+    if not auth or not (auth.get("tokens") or {}).get("access_token"):
+        print("Error: No Codex credentials found at ~/.codex/auth.json.", file=sys.stderr)
+        print("Log in to Codex CLI first: run `codex` and complete login.", file=sys.stderr)
+        sys.exit(1)
+
+    save_profile(name, "codex", auth)
+    print(f"Saved Codex credentials to profile '{name}'.")
+    print(f"Use `cou {name}` to check usage.")
+
+
+def cmd_list():
+    profiles = list_profiles("codex")
+    if not profiles:
+        print("No saved Codex profiles.")
+        print("Save one: log into an account and run `cou save <name>`")
+        return
+    print("Saved Codex profiles:")
+    for p in profiles:
+        print(f"  {p}")
+
+
 # ── Main ──────────────────────────────────────────────────
 
 
@@ -412,80 +446,94 @@ def main():
     args = sys.argv[1:]
     as_json = "--json" in args
     no_cache = "--no-cache" in args or "--fresh" in args
+    positional = [a for a in args if not a.startswith("--")]
 
-    auth = read_auth()
-    if not auth or not (auth.get("tokens") or {}).get("access_token"):
-        print(
-            "Error: No Codex credentials found at ~/.codex/auth.json.", file=sys.stderr
-        )
-        print(
-            "Log in to Codex CLI first: run `codex` and complete login.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    if positional and positional[0] == "save":
+        if len(positional) < 2:
+            print("Usage: cou save <profile-name>", file=sys.stderr)
+            sys.exit(1)
+        return cmd_save(positional[1])
+
+    if positional and positional[0] == "list":
+        return cmd_list()
+
+    profile_name = positional[0] if positional else None
+
+    if profile_name:
+        auth = load_profile(profile_name, "codex")
+        if not auth or not (auth.get("tokens") or {}).get("access_token"):
+            print(f"Error: Profile '{profile_name}' not found or has no credentials.", file=sys.stderr)
+            print(f"Save it first: log in and run `cou save {profile_name}`", file=sys.stderr)
+            sys.exit(1)
+    else:
+        auth = read_auth()
+        if not auth or not (auth.get("tokens") or {}).get("access_token"):
+            print("Error: No Codex credentials found at ~/.codex/auth.json.", file=sys.stderr)
+            print("Log in to Codex CLI first: run `codex` and complete login.", file=sys.stderr)
+            sys.exit(1)
 
     access_token = auth["tokens"]["access_token"]
 
     if is_token_expired(access_token):
         refresh_token = auth["tokens"].get("refresh_token")
         if not refresh_token:
-            print(
-                "Error: Codex access token expired and no refresh token available.",
-                file=sys.stderr,
-            )
-            print("Re-login to Codex: run `codex`.", file=sys.stderr)
+            if profile_name:
+                print(f"Error: Profile '{profile_name}' token expired and no refresh token.", file=sys.stderr)
+                print(f"Re-save: log in and run `cou save {profile_name}`", file=sys.stderr)
+            else:
+                print("Error: Codex access token expired and no refresh token available.", file=sys.stderr)
+                print("Re-login to Codex: run `codex`.", file=sys.stderr)
             sys.exit(1)
         refreshed = refresh_tokens(refresh_token)
         if not refreshed:
-            print(
-                "Error: Token refresh failed. Re-login to Codex: run `codex`.",
-                file=sys.stderr,
-            )
+            if profile_name:
+                print(f"Error: Profile '{profile_name}' token refresh failed.", file=sys.stderr)
+                print(f"Re-save: log in and run `cou save {profile_name}`", file=sys.stderr)
+            else:
+                print("Error: Token refresh failed. Re-login to Codex: run `codex`.", file=sys.stderr)
             sys.exit(1)
         auth["tokens"].update(refreshed)
-        write_auth(auth, refreshed)
+        if profile_name:
+            save_profile(profile_name, "codex", auth)
+        else:
+            write_auth(auth, refreshed)
         access_token = refreshed["access_token"]
 
     token_prefix = access_token[:16]
+    cache_path = profile_cache_file(profile_name, "codex") if profile_name else None
 
     if not no_cache:
-        cache = read_cache()
+        cache = read_cache(cache_path)
         if cache and is_cache_valid(cache, token_prefix):
             data = cache["data"]
             if as_json:
                 print(json.dumps(data))
             else:
-                format_limits(data)
+                format_limits(data, account_label=profile_name)
             return
 
     headers = fetch_headers(auth)
     if not headers:
-        cache = read_cache()
+        cache = read_cache(cache_path)
         if cache and cache.get("data"):
             sys.stderr.write("[stale] ")
             data = cache["data"]
             if as_json:
                 print(json.dumps(data))
             else:
-                format_limits(data)
+                format_limits(data, account_label=profile_name)
             return
-        print(
-            "Error: Could not reach Codex API or parse rate-limit headers.",
-            file=sys.stderr,
-        )
-        print(
-            "The endpoint returned no x-codex-* headers. Try again in a moment.",
-            file=sys.stderr,
-        )
+        print("Error: Could not reach Codex API or parse rate-limit headers.", file=sys.stderr)
+        print("The endpoint returned no x-codex-* headers. Try again in a moment.", file=sys.stderr)
         sys.exit(1)
 
     data = parse_usage(headers, auth)
-    write_cache(data, token_prefix)
+    write_cache(data, token_prefix, cache_path)
 
     if as_json:
         print(json.dumps(data))
     else:
-        format_limits(data)
+        format_limits(data, account_label=profile_name)
 
 
 if __name__ == "__main__":

@@ -83,6 +83,39 @@ cou --json         # JSON output
 cou --no-cache     # Skip the 90s cache, fetch fresh
 ```
 
+### Multiple accounts
+
+If you have more than one Claude Code or Codex account, you can save each one as a named profile and check usage without switching logins.
+
+```bash
+# Log into your work account, then snapshot it:
+cu save work
+
+# Log into your personal account, then snapshot it:
+cu save personal
+
+# Check either account any time - no login switching:
+cu work
+cu personal
+cu work --json
+
+# Same for Codex:
+cou save team-a
+cou save team-b
+cou team-a
+cou team-b
+
+# List saved profiles:
+cu list
+cou list
+```
+
+Running `cu` or `cou` with no profile name still reads the live credentials, same as before.
+
+Saved profiles auto-refresh their tokens, so they stay valid until the refresh token itself is revoked. If a profile goes stale, just log in again and re-run `cu save <name>`.
+
+Profiles are stored at `~/.config/ai-usage-monitors/profiles/<name>/`.
+
 ### JSON shape (`cu --json`)
 
 ```json
