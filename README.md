@@ -6,7 +6,7 @@ Live subscription usage monitors for **Claude Code** and **Codex CLI**. Two comm
 
 If you're on a paid Claude Code or Codex CLI plan, you want to know how much of your window you've already burned through without opening a browser or checking a dashboard. These two commands print it in your terminal in under a second.
 
-- **`cu`** reads Claude Code credentials from macOS Keychain, calls the Anthropic OAuth usage endpoint, prints 5h / weekly / Sonnet / Opus utilization.
+- **`cu`** reads Claude Code OAuth credentials (macOS Keychain or `~/.claude/.credentials.json`), calls the Anthropic OAuth usage endpoint, prints 5h / weekly / Sonnet / Opus utilization.
 - **`cou`** reads Codex CLI credentials from `~/.codex/auth.json`, fires a minimal inference request (the cheapest possible: `model="gpt-5.2", instructions="ok", store=false`), parses the `x-codex-*` rate-limit headers, prints primary / secondary window utilization.
 
 Both cache responses for 90 seconds so repeated calls don't spam the APIs.
@@ -171,12 +171,12 @@ Profiles are stored at `~/.config/ai-usage-monitors/profiles/<name>/`.
 
 | Command | macOS | Linux | Windows |
 |---------|-------|-------|---------|
-| `cu`    | yes   | no    | no      |
+| `cu`    | yes   | yes   | yes     |
 | `cou`   | yes   | yes   | yes     |
 
-`cu` is macOS-only because it reads Claude Code credentials from the macOS Keychain. If you need `cu` on Windows or Linux, please [open an issue](https://github.com/minhvoio/ai-usage-monitors/issues). I haven't mapped where Claude Code stores credentials on those platforms yet.
+`cu` reads credentials from macOS Keychain on macOS (with `~/.claude/.credentials.json` as fallback) and from `~/.claude/.credentials.json` directly on Linux and Windows.
 
-`cou` works everywhere because it reads credentials from a plain file (`~/.codex/auth.json` on macOS/Linux, `%USERPROFILE%\.codex\auth.json` on Windows).
+`cou` reads credentials from `~/.codex/auth.json` on macOS/Linux, `%USERPROFILE%\.codex\auth.json` on Windows.
 
 ---
 
@@ -184,7 +184,7 @@ Profiles are stored at `~/.config/ai-usage-monitors/profiles/<name>/`.
 
 ### `cu` - Claude Code
 
-1. Reads `Claude Code-credentials` entry from macOS Keychain via `security find-generic-password`.
+1. Reads Claude Code OAuth credentials. On macOS: tries Keychain (`security find-generic-password`) first, falls back to `~/.claude/.credentials.json`. On Linux / Windows: reads `~/.claude/.credentials.json` directly. Uses a recursive token finder so it works across schema changes.
 2. If the access token is expired, refreshes via `POST https://platform.claude.com/v1/oauth/token`.
 3. Calls `GET https://api.anthropic.com/api/oauth/usage` with `anthropic-beta: oauth-2025-04-20`.
 4. Renders utilization bars for each window (5h, weekly, Sonnet weekly, Opus weekly).
@@ -226,7 +226,7 @@ Or let this installer offer it at the end. It prompts `Install macu too? [Y/n]` 
 - **Node.js >= 18** for `npm install -g` and the cross-platform command wrappers - [nodejs.org/en/download](https://nodejs.org/en/download)
 - **Python 3** does the actual work. `python3` on macOS/Linux, `python` on Windows - [python.org/downloads](https://www.python.org/downloads/)
 - **curl** ships with macOS, most Linux distros, and Windows 10+
-- **`cu` only**: macOS + Claude Code logged in (`claude` CLI)
+- **`cu` only**: Claude Code logged in (`claude` CLI)
 - **`cou` only**: Codex CLI logged in (`~/.codex/auth.json` exists)
 
 If you don't have Node.js or Python 3, the agent install guide walks you through it: [docs/guide/installation.md](docs/guide/installation.md)

@@ -131,9 +131,9 @@ If the install fails, check that npm is available (`npm -v`) and that Node.js is
 ### Step 3: Verify Installation
 
 ```bash
-which cu     # Should return a path (macOS only)
+which cu     # Should return a path
 which cou    # Should return a path
-cu --help    # macOS only
+cu --help
 cou --help
 ```
 
@@ -154,23 +154,20 @@ Before running anything, ask the user:
 
 Then check their OS:
 
-- **macOS + Claude Code** -> install and use `cu`
-- **macOS + Codex CLI** -> install and use `cou`
-- **macOS + both** -> use both `cu` and `cou`
-- **Linux or Windows** -> `cu` is not available on this platform. Only `cou` works here (Codex CLI only).
-
-If the user is on Linux or Windows and wants Claude Code usage, tell them: `cu` reads from macOS Keychain and is macOS-only. There is no `cu` equivalent for Linux or Windows yet.
+- **Claude Code** -> install and use `cu` (works on macOS, Linux, and Windows)
+- **Codex CLI** -> install and use `cou` (works on macOS, Linux, and Windows)
+- **Both** -> use both `cu` and `cou`
 
 ### Step 5: Run the Monitor and Present the Output
 
 Run the appropriate command and show the user the output:
 
-**Claude Code (macOS only):**
+**Claude Code:**
 ```bash
 cu
 ```
 
-**Codex CLI (all platforms):**
+**Codex CLI:**
 ```bash
 cou
 ```
@@ -204,12 +201,12 @@ This does not require a separate install. It analyzes your Claude Code, OpenCode
 
 | Command | What it does |
 |---------|-------------|
-| `cu` | Claude Code live usage (macOS only) |
+| `cu` | Claude Code live usage (macOS, Linux, Windows) |
 | `cu --json` | JSON output for scripting |
 | `cu save <name>` | Snapshot current Claude Code credentials as a named profile |
 | `cu list` | List saved Claude Code profiles |
 | `cu <name>` | Check usage for a saved profile without switching logins |
-| `cou` | Codex CLI live usage (all platforms) |
+| `cou` | Codex CLI live usage (macOS, Linux, Windows) |
 | `cou --json` | JSON output for scripting |
 | `cou --no-cache` | Skip the 90s cache and fetch fresh data |
 | `cou save <name>` | Snapshot current Codex credentials as a named profile |
@@ -225,7 +222,6 @@ Both `cu` and `cou` cache responses for 90 seconds so repeated calls do not spam
 | `cu: command not found` | Check that npm global bin is in PATH: `npm config get prefix` then add `<prefix>/bin` to PATH |
 | `cou: command not found` | Same as above |
 | `python3: command not found` | Install Python 3 (see Step 1) |
-| `cu` fails with credentials error | Claude Code must be logged in. Run `claude` and authenticate first. |
+| `cu` fails with credentials error | Claude Code must be logged in. Run `claude` and authenticate first. On macOS, credentials are in Keychain. On Linux/Windows, credentials are at `~/.claude/.credentials.json`. |
 | `cou` fails with credentials error | Codex CLI must be logged in. `~/.codex/auth.json` must exist. Log in via Codex CLI first. |
-| `cu` not available on Linux or Windows | `cu` is macOS-only. Use `cou` for Codex CLI usage on other platforms. |
 | Stale profile | Log in again and re-run `cu save <name>` or `cou save <name>` to refresh. |

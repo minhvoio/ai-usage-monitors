@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """claude-usage - Show Claude Code OAuth usage limits with colored terminal bars.
 
-Reads credentials from macOS Keychain, calls the Anthropic OAuth usage API,
+Reads credentials from macOS Keychain or on-disk credential files
+(~/.claude/.credentials.json), calls the Anthropic OAuth usage API,
 and displays 5h/weekly utilization with colored progress bars.
 
-Requires: macOS, Python 3, curl, Claude Code logged in.
+macOS: Keychain first, credential file fallback.
+Linux / Windows: credential file only.
+
+Requires: Python 3, curl, Claude Code logged in.
 """
 
 import json
@@ -33,16 +37,6 @@ from shared import (
     profile_cache_file,
 )
 
-if platform.system() != "Darwin":
-    sys.stderr.write(
-        "cu currently only supports macOS (reads Claude Code credentials from Keychain).\n"
-        f"Detected platform: {platform.system()}.\n\n"
-        "Windows / Linux support: please open an issue\n"
-        "  https://github.com/minhvoio/ai-usage-monitors/issues\n\n"
-        "If you use Codex CLI, try `cou` instead (works on macOS and Linux).\n"
-    )
-    sys.exit(2)
-
 HOME = Path.home()
 
 CACHE_DIR = HOME / ".claude" / "plugins" / "oh-my-claudecode"
@@ -51,6 +45,11 @@ CACHE_TTL_MS = 90_000
 
 API_TIMEOUT_S = 10
 KEYCHAIN_SVC = "Claude Code-credentials"
+CREDENTIAL_PATHS = [
+    HOME / ".claude" / ".credentials.json",
+    HOME / ".claude" / "credentials.json",
+    HOME / ".config" / "claude" / "credentials.json",
+]
 
 
 # ── Credentials ───────────────────────────────────────────
@@ -84,6 +83,66 @@ def read_keychain_credentials():
         }
     except Exception:
         return None
+
+
+def _find_oauth_block(obj):
+    """Recursively find a dict containing an OAuth access token (sk-ant-oat*)."""
+    if not isinstance(obj, dict):
+        return None
+    token = obj.get("accessToken", "")
+    if isinstance(token, str) and token.startswith("sk-ant-oat"):
+        return obj
+    for v in obj.values():
+        if isinstance(v, dict):
+            found = _find_oauth_block(v)
+            if found:
+                return found
+    return None
+
+
+def read_credentials_file():
+    """Read OAuth credentials from on-disk JSON (Linux/Windows/macOS fallback).
+
+    Tries known credential file locations in order. Uses a recursive token
+    finder because Anthropic changes the JSON schema between versions.
+    """
+    for cred_path in CREDENTIAL_PATHS:
+        try:
+            if not cred_path.exists():
+                continue
+            parsed = json.loads(cred_path.read_text())
+            creds = parsed.get("claudeAiOauth")
+            if isinstance(creds, dict) and creds.get("accessToken"):
+                return {
+                    "accessToken": creds["accessToken"],
+                    "expiresAt": creds.get("expiresAt"),
+                    "refreshToken": creds.get("refreshToken"),
+                    "source": "file",
+                }
+            block = _find_oauth_block(parsed)
+            if block:
+                return {
+                    "accessToken": block["accessToken"],
+                    "expiresAt": block.get("expiresAt"),
+                    "refreshToken": block.get("refreshToken"),
+                    "source": "file",
+                }
+        except Exception:
+            continue
+    return None
+
+
+def read_credentials():
+    """Platform-aware credential reader.
+
+    macOS: Keychain first, credential file fallback.
+    Linux / Windows: credential file only.
+    """
+    if platform.system() == "Darwin":
+        creds = read_keychain_credentials()
+        if creds:
+            return creds
+    return read_credentials_file()
 
 
 def is_token_expired(creds):
@@ -327,9 +386,9 @@ RESERVED_ARGS = {"save", "list", "--json"}
 
 
 def cmd_save(name):
-    creds = read_keychain_credentials()
+    creds = read_credentials()
     if not creds or not creds.get("accessToken"):
-        print("Error: No Claude Code credentials found in Keychain.", file=sys.stderr)
+        print("Error: No Claude Code credentials found.", file=sys.stderr)
         print("Make sure Claude Code is logged in (run: claude)", file=sys.stderr)
         sys.exit(1)
 
@@ -433,7 +492,7 @@ def main():
             print(f"Save it first: log in and run `cu save {profile_name}`", file=sys.stderr)
             sys.exit(1)
     else:
-        creds = read_keychain_credentials()
+        creds = read_credentials()
         if not creds or not creds.get("accessToken"):
             print("Error: No Claude Code credentials found.", file=sys.stderr)
             print("Make sure Claude Code is logged in (run: claude)", file=sys.stderr)
