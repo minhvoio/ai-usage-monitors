@@ -35,6 +35,23 @@ Bars are green when there's headroom, yellow at 70%+, red at 90%+.
 
 ## Install
 
+### For LLM Agents
+
+Paste this to your agent (Claude Code, OpenCode, Cursor, etc.):
+
+```
+Install ai-usage-monitors so I can see my live Claude/Codex usage. Follow the guide:
+https://raw.githubusercontent.com/minhvoio/ai-usage-monitors/main/docs/guide/installation.md
+```
+
+Or fetch the guide directly:
+
+```bash
+curl -s https://raw.githubusercontent.com/minhvoio/ai-usage-monitors/main/docs/guide/installation.md
+```
+
+The agent guide has numbered steps including prerequisite installation for non-technical users.
+
 ### macOS / Linux
 
 ```bash
@@ -206,11 +223,13 @@ Or let this installer offer it at the end. It prompts `Install macu too? [Y/n]` 
 
 ## Requirements
 
-- **Node.js >= 18** for `npm install -g` and the cross-platform command wrappers
-- **Python 3** does the actual work. `python3` on macOS/Linux, `python` on Windows
+- **Node.js >= 18** for `npm install -g` and the cross-platform command wrappers - [nodejs.org/en/download](https://nodejs.org/en/download)
+- **Python 3** does the actual work. `python3` on macOS/Linux, `python` on Windows - [python.org/downloads](https://www.python.org/downloads/)
 - **curl** ships with macOS, most Linux distros, and Windows 10+
 - **`cu` only**: macOS + Claude Code logged in (`claude` CLI)
 - **`cou` only**: Codex CLI logged in (`~/.codex/auth.json` exists)
+
+If you don't have Node.js or Python 3, the agent install guide walks you through it: [docs/guide/installation.md](docs/guide/installation.md)
 
 ## License
 
