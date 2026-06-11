@@ -51,6 +51,52 @@ CREDENTIAL_PATHS = [
     HOME / ".config" / "claude" / "credentials.json",
 ]
 
+AUTH_SYNC_FILE = HOME / ".config" / "opencode-claude-auth-sync" / "accounts.json"
+
+
+# ── Auth-sync fallback ────────────────────────────────────
+
+
+def load_auth_sync_account(name):
+    """Load credentials from opencode-claude-auth-sync store if available."""
+    try:
+        if not AUTH_SYNC_FILE.exists():
+            return None
+        store = json.loads(AUTH_SYNC_FILE.read_text())
+        acc = store.get("accounts", {}).get(name)
+        if acc and acc.get("accessToken"):
+            return {
+                "accessToken": acc["accessToken"],
+                "refreshToken": acc.get("refreshToken"),
+                "expiresAt": acc.get("expiresAt"),
+                "source": "auth-sync",
+            }
+    except Exception:
+        pass
+    return None
+
+
+def list_auth_sync_accounts():
+    """List account names from the auth-sync store."""
+    try:
+        if not AUTH_SYNC_FILE.exists():
+            return []
+        store = json.loads(AUTH_SYNC_FILE.read_text())
+        return list(store.get("accounts", {}).keys())
+    except Exception:
+        return []
+
+
+def prefer_fresher(profile_creds, sync_creds):
+    """Return whichever credentials have a higher expiresAt."""
+    if not sync_creds:
+        return profile_creds
+    if not profile_creds or not profile_creds.get("accessToken"):
+        return sync_creds
+    if (sync_creds.get("expiresAt") or 0) > (profile_creds.get("expiresAt") or 0):
+        return sync_creds
+    return profile_creds
+
 
 # ── Credentials ───────────────────────────────────────────
 
@@ -414,6 +460,9 @@ def cmd_list():
 
 def cmd_all(as_json):
     profiles = list_profiles("claude")
+    for name in list_auth_sync_accounts():
+        if name not in profiles:
+            profiles.append(name)
     if not profiles:
         print("No saved Claude profiles.")
         print("Save one: log into an account and run `cu save <name>`")
@@ -421,7 +470,7 @@ def cmd_all(as_json):
 
     results = {}
     for name in profiles:
-        creds = load_profile(name, "claude")
+        creds = prefer_fresher(load_profile(name, "claude"), load_auth_sync_account(name))
         if not creds or not creds.get("accessToken"):
             continue
 
@@ -486,7 +535,7 @@ def main():
     profile_name = positional[0] if positional else None
 
     if profile_name:
-        creds = load_profile(profile_name, "claude")
+        creds = prefer_fresher(load_profile(profile_name, "claude"), load_auth_sync_account(profile_name))
         if not creds or not creds.get("accessToken"):
             print(f"Error: Profile '{profile_name}' not found or has no credentials.", file=sys.stderr)
             print(f"Save it first: log in and run `cu save {profile_name}`", file=sys.stderr)
