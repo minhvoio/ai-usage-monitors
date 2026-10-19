@@ -15,6 +15,7 @@ Requires: Python 3, curl, Codex CLI logged in (~/.codex/auth.json exists).
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -43,6 +44,7 @@ HOME = Path.home()
 
 AUTH_FILE = HOME / ".codex" / "auth.json"
 CONFIG_FILE = HOME / ".codex" / "config.toml"
+MODELS_CACHE_FILE = HOME / ".codex" / "models_cache.json"
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 TOKEN_REFRESH_URL = "https://auth.openai.com/oauth/token"
 
@@ -55,7 +57,14 @@ CACHE_TTL_MS = 90_000
 
 API_TIMEOUT_S = 30
 
-FALLBACK_MODELS = ["gpt-5.2", "gpt-5.4"]
+# Last resort only; fetch_supported_models() is the live source. Used when the
+# backend's model list cannot be fetched (offline error pages, API-key mode).
+FALLBACK_MODELS = ["gpt-6.1-sol", "gpt-5.6-sol"]
+
+# The ChatGPT backend rejects clients older than its minimum supported version
+# with HTTP 400 and no x-codex-* headers. Used only when the installed Codex
+# CLI version cannot be detected; the backend accepts any newer version.
+DEFAULT_CLIENT_VERSION = "0.163.0"
 
 
 # ── Credentials ───────────────────────────────────────────
@@ -145,6 +154,27 @@ def write_auth(auth, tokens):
 # ── API ───────────────────────────────────────────────────
 
 
+def detect_client_version():
+    """Codex CLI version for the `version` request header."""
+    try:
+        result = subprocess.run(
+            ["codex", "--version"], capture_output=True, text=True, timeout=5
+        )
+        match = re.search(r"\d+\.\d+\.\d+", result.stdout)
+        if match:
+            return match.group(0)
+    except Exception:
+        pass
+    try:
+        cache = json.loads(MODELS_CACHE_FILE.read_text())
+        version = cache.get("client_version")
+        if version:
+            return str(version)
+    except Exception:
+        pass
+    return DEFAULT_CLIENT_VERSION
+
+
 def read_configured_model():
     try:
         if not CONFIG_FILE.exists():
@@ -162,7 +192,7 @@ def read_configured_model():
     return None
 
 
-def try_fetch(auth, model):
+def try_fetch(auth, model, client_version):
     tokens = auth.get("tokens") or {}
     access_token = tokens.get("access_token")
     account_id = tokens.get("account_id")
@@ -205,7 +235,7 @@ def try_fetch(auth, model):
         "-H",
         "originator: codex_cli_rs",
         "-H",
-        "version: 0.0.0",
+        f"version: {client_version}",
         "-d",
         body,
     ]
@@ -226,17 +256,73 @@ def try_fetch(auth, model):
         return None
 
 
+def fetch_supported_models(auth, client_version):
+    """Model slugs this account can use, straight from the Codex backend.
+
+    Static fallback names go stale whenever OpenAI retires a model; this list
+    is what the installed Codex CLI itself receives. Slugs reserved for
+    internal Codex features (e.g. codex-auto-review) are not inference models.
+    """
+    tokens = auth.get("tokens") or {}
+    access_token = tokens.get("access_token")
+    account_id = tokens.get("account_id")
+    if not access_token:
+        return []
+
+    auth_mode = auth.get("auth_mode") or ("chatgpt" if access_token else "apikey")
+    base_url = CHATGPT_BASE if auth_mode == "chatgpt" else API_BASE
+    url = f"{base_url}/models?client_version={client_version}"
+
+    cmd = [
+        "curl",
+        "-s",
+        "--compressed",
+        "--max-time",
+        str(API_TIMEOUT_S),
+        url,
+        "-H",
+        f"Authorization: Bearer {access_token}",
+    ]
+    if account_id:
+        cmd.extend(["-H", f"ChatGPT-Account-ID: {account_id}"])
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=API_TIMEOUT_S + 2
+        )
+        if result.returncode != 0:
+            return []
+        models = json.loads(result.stdout).get("models") or []
+        return [
+            m["slug"]
+            for m in models
+            if isinstance(m, dict)
+            and m.get("slug")
+            and not m["slug"].startswith("codex-")
+        ]
+    except Exception:
+        return []
+
+
 def fetch_headers(auth):
+    client_version = detect_client_version()
+
     models_to_try = []
     configured = read_configured_model()
     if configured:
         models_to_try.append(configured)
-    for m in FALLBACK_MODELS:
-        if m not in models_to_try:
-            models_to_try.append(m)
 
     for model in models_to_try:
-        headers = try_fetch(auth, model)
+        headers = try_fetch(auth, model, client_version)
+        if headers:
+            return headers
+
+    # The configured model may be retired or wrong; ask the backend which
+    # models this account supports before falling back to static names.
+    for model in fetch_supported_models(auth, client_version) or FALLBACK_MODELS:
+        if model in models_to_try:
+            continue
+        headers = try_fetch(auth, model, client_version)
         if headers:
             return headers
     return None
