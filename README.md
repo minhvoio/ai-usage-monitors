@@ -7,7 +7,7 @@ Live subscription usage monitors for **Claude Code** and **Codex CLI**. Two comm
 If you're on a paid Claude Code or Codex CLI plan, you want to know how much of your window you've already burned through without opening a browser or checking a dashboard. These two commands print it in your terminal in under a second.
 
 - **`cu`** reads Claude Code OAuth credentials (macOS Keychain or `~/.claude/.credentials.json`), calls the Anthropic OAuth usage endpoint, prints 5h / weekly / Sonnet / Opus utilization.
-- **`cou`** reads Codex CLI credentials from `~/.codex/auth.json`, fires a minimal inference request (the cheapest possible: `model="gpt-5.2", instructions="ok", store=false`), parses the `x-codex-*` rate-limit headers, prints primary / secondary window utilization.
+- **`cou`** reads Codex CLI credentials from `~/.codex/auth.json`, fires a minimal inference request (the cheapest possible: `instructions="ok", store=false`), parses the `x-codex-*` rate-limit headers, prints primary / secondary window utilization.
 
 Both cache responses for 90 seconds so repeated calls don't spam the APIs.
 
@@ -197,7 +197,7 @@ Codex has **no dedicated usage endpoint**. The only way to read rate-limit state
 1. Reads access token + refresh token from `~/.codex/auth.json`.
 2. If expired, refreshes via `POST https://auth.openai.com/oauth/token`.
 3. Determines the base URL from `auth_mode`: `chatgpt` -> `https://chatgpt.com/backend-api/codex`, otherwise `https://api.openai.com/v1`.
-4. Fires `POST /responses` with the minimum possible body: `{"model": "gpt-5.2", "instructions": "ok", "input": [...], "stream": true, "store": false}`. If `~/.codex/config.toml` sets a different model, tries that first, falls back to `gpt-5.2` then `gpt-5.4`.
+4. Fires `POST /responses` with the minimum possible body: `{"model": "...", "instructions": "ok", "input": [...], "stream": true, "store": false}`. Sends the installed Codex CLI's version in the `version` header - the ChatGPT backend rejects older client versions with HTTP 400 and no `x-codex-*` headers. Uses the model from `~/.codex/config.toml`; if that model is missing or retired, falls back to the account's supported model list (then static names).
 5. Parses `x-codex-*` headers: `x-codex-primary-used-percent`, `x-codex-primary-window-minutes`, `x-codex-primary-reset-at`, plus secondary equivalents, plan type, active limit, credits balance.
 6. Renders utilization bars. Caches at `~/.codex/.macu-cache/usage.json` for 90s.
 
